@@ -12,6 +12,11 @@ import (
 	"github.com/portainer/portainer-mcp/pkg/toolgen"
 )
 
+const (
+	// maxProxyResponseBytes caps proxy response reads to prevent unbounded memory consumption (10 MB)
+	maxProxyResponseBytes = 10 * 1024 * 1024
+)
+
 func (s *PortainerMCPServer) AddDockerProxyFeatures() {
 	s.addToolIfExists(ToolDockerProxy, s.HandleDockerProxy())
 }
@@ -68,6 +73,8 @@ func (s *PortainerMCPServer) HandleDockerProxy() server.ToolHandlerFunc {
 			return mcp.NewToolResultErrorFromErr("invalid body parameter", err), nil
 		}
 
+		applyDockerDefaultFilters(dockerAPIPath, queryParamsMap)
+
 		opts := models.DockerProxyRequestOptions{
 			EnvironmentID: environmentId,
 			Path:          dockerAPIPath,
@@ -84,12 +91,18 @@ func (s *PortainerMCPServer) HandleDockerProxy() server.ToolHandlerFunc {
 		if err != nil {
 			return mcp.NewToolResultErrorFromErr("failed to send Docker API request", err), nil
 		}
+		defer response.Body.Close()
 
-		responseBody, err := io.ReadAll(response.Body)
+		responseBody, err := io.ReadAll(io.LimitReader(response.Body, maxProxyResponseBytes))
 		if err != nil {
 			return mcp.NewToolResultErrorFromErr("failed to read Docker API response", err), nil
 		}
+		if int64(len(responseBody)) >= maxProxyResponseBytes {
+			return mcp.NewToolResultError("Docker API response exceeded the maximum allowed size and was truncated; try a more specific request"), nil
+		}
 
-		return mcp.NewToolResultText(string(responseBody)), nil
+		compacted := compactDockerResponse(dockerAPIPath, responseBody)
+
+		return mcp.NewToolResultText(string(compacted)), nil
 	}
 }
