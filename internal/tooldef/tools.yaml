@@ -935,3 +935,149 @@ tools:
       destructiveHint: false
       idempotentHint: true
       openWorldHint: false
+
+  ## Vault Secrets
+  ## Vault integration tools for secure secret management.
+  ## These tools are only registered when Vault is configured via CLI flags.
+  - name: listVaultSecrets
+    description: >-
+      List the secret key names available at a given Vault path. Returns only
+      key names, never secret values. Use this to discover what secrets are
+      available before creating or updating stacks with vault secrets.
+    parameters:
+      - name: path
+        description: >-
+          The Vault secret path to list keys from.
+          Example: "secret/myapp" or "secret/production/database"
+        type: string
+        required: true
+    annotations:
+      title: List Vault Secret Keys
+      readOnlyHint: true
+      destructiveHint: false
+      idempotentHint: true
+      openWorldHint: true
+  - name: createLocalStackWithVaultSecrets
+    description: >-
+      Create a new local Docker Compose stack with environment variables sourced
+      from HashiCorp Vault. Secret values are fetched server-side and never appear
+      in the conversation. Use listVaultSecrets first to discover available keys.
+    parameters:
+      - name: environmentId
+        description: The ID of the environment to deploy the stack to
+        type: number
+        required: true
+      - name: name
+        description: >-
+          Name of the stack. Must consist of lowercase alphanumeric characters,
+          hyphens, or underscores and start with a letter or number.
+        type: string
+        required: true
+      - name: file
+        description: Content of the docker-compose.yml file.
+        type: string
+        required: true
+      - name: vaultSecrets
+        description: >-
+          Mappings from Vault secret paths/keys to stack environment variable names.
+          Each entry specifies which Vault path and key to read, and the env var name
+          to assign the value to. Secret values are never exposed.
+          Example: [{"vaultPath": "secret/myapp", "vaultKey": "db_password", "envName": "DB_PASSWORD"}]
+        type: array
+        required: true
+        items:
+          type: object
+          properties:
+            vaultPath:
+              type: string
+              description: The Vault secret path (e.g., "secret/myapp")
+            vaultKey:
+              type: string
+              description: The key within the Vault secret to read
+            envName:
+              type: string
+              description: The environment variable name to set in the stack
+      - name: env
+        description: >-
+          Optional non-secret environment variables for the stack.
+          Example: [{"name": "LOG_LEVEL", "value": "info"}]
+        type: array
+        required: false
+        items:
+          type: object
+          properties:
+            name:
+              type: string
+              description: The name of the environment variable
+            value:
+              type: string
+              description: The value of the environment variable
+    annotations:
+      title: Create Local Stack With Vault Secrets
+      readOnlyHint: false
+      destructiveHint: false
+      idempotentHint: false
+      openWorldHint: true
+  - name: updateLocalStackWithVaultSecrets
+    description: >-
+      Update an existing local stack with environment variables sourced from
+      HashiCorp Vault. Secret values are fetched server-side and never appear
+      in the conversation. Use listVaultSecrets to discover available keys.
+    parameters:
+      - name: id
+        description: The ID of the local stack to update
+        type: number
+        required: true
+      - name: environmentId
+        description: The ID of the environment where the stack is deployed
+        type: number
+        required: true
+      - name: file
+        description: Content of the docker-compose.yml file.
+        type: string
+        required: true
+      - name: vaultSecrets
+        description: >-
+          Mappings from Vault paths/keys to env var names. Same format as
+          createLocalStackWithVaultSecrets.
+        type: array
+        required: true
+        items:
+          type: object
+          properties:
+            vaultPath:
+              type: string
+              description: The Vault secret path
+            vaultKey:
+              type: string
+              description: The key within the Vault secret
+            envName:
+              type: string
+              description: The environment variable name
+      - name: env
+        description: Optional non-secret environment variables.
+        type: array
+        required: false
+        items:
+          type: object
+          properties:
+            name:
+              type: string
+              description: The name of the environment variable
+            value:
+              type: string
+              description: The value of the environment variable
+      - name: prune
+        description: Remove services no longer in the compose file. Default false.
+        type: boolean
+        required: false
+      - name: pullImage
+        description: Pull images before deploying. Default false.
+        type: boolean
+        required: false
+    annotations:
+      title: Update Local Stack With Vault Secrets
+      readOnlyHint: false
+      destructiveHint: false
+      idempotentHint: true
+      openWorldHint: true

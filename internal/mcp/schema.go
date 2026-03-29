@@ -46,6 +46,11 @@ const (
 	ToolStartLocalStack                    = "startLocalStack"
 	ToolStopLocalStack                     = "stopLocalStack"
 	ToolDeleteLocalStack                   = "deleteLocalStack"
+
+	// Vault tools
+	ToolListVaultSecrets                    = "listVaultSecrets"
+	ToolCreateLocalStackWithVaultSecrets    = "createLocalStackWithVaultSecrets"
+	ToolUpdateLocalStackWithVaultSecrets    = "updateLocalStackWithVaultSecrets"
 )
 
 // Access levels for users and teams
