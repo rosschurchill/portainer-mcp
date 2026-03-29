@@ -185,6 +185,99 @@ When using read-only mode:
 - All write tools (create, update, delete) are not loaded
 - The Docker and Kubernetes proxy tools are available but restricted to GET requests only
 
+## Vault Integration (Secure Secret Management)
+
+Portainer MCP supports [HashiCorp Vault](https://www.vaultproject.io/) integration for secure secret injection into stacks. When enabled, secrets flow directly from Vault to Portainer **entirely in memory** — secret values never appear in the AI conversation, tool parameters, or MCP responses.
+
+This solves a fundamental problem with LLM-based infrastructure management: without Vault integration, environment variables containing passwords, API keys, and connection strings are visible in the chat when creating or updating stacks.
+
+### How It Works
+
+```
+AI says: "Create stack with secrets from vault path secret/myapp"
+    → MCP server receives only path references (no values)
+    → Server fetches secrets from Vault via AppRole auth
+    → Server injects secrets as env vars into Portainer stack
+    → Server zeroes secret memory after use
+    → AI sees: "Stack created with 3 secrets injected from Vault"
+```
+
+### Configuration
+
+Vault integration uses [AppRole](https://developer.hashicorp.com/vault/docs/auth/methods/approle) authentication. Add the vault flags to your MCP server configuration:
+
+```json
+{
+    "mcpServers": {
+        "portainer": {
+            "command": "/path/to/portainer-mcp",
+            "args": [
+                "-server", "[IP]:[PORT]",
+                "-token", "[TOKEN]",
+                "-vault-addr", "https://vault.example.com:8200",
+                "-vault-role-id", "[ROLE_ID]",
+                "-vault-secret-id", "[SECRET_ID]"
+            ]
+        }
+    }
+}
+```
+
+**Optional vault flags:**
+- `-vault-skip-tls` — Skip TLS verification for the Vault connection (not recommended for production)
+- `-vault-mount-path` — Custom AppRole auth mount path (default: `approle`)
+
+### Vault Tools
+
+When Vault is configured, three additional MCP tools become available:
+
+| Tool | Description | Read-Only |
+|------|-------------|-----------|
+| `listVaultSecrets` | List key names at a Vault path (no values exposed) | Yes |
+| `createLocalStackWithVaultSecrets` | Create a stack with env vars sourced from Vault | No |
+| `updateLocalStackWithVaultSecrets` | Update a stack with env vars sourced from Vault | No |
+
+The `vaultSecrets` parameter maps Vault paths/keys to stack environment variable names:
+
+```json
+[
+    {"vaultPath": "secret/myapp", "vaultKey": "db_password", "envName": "DB_PASSWORD"},
+    {"vaultPath": "secret/myapp", "vaultKey": "api_key", "envName": "API_KEY"}
+]
+```
+
+### Security Guarantees
+
+- Secret values are **never** included in MCP tool responses or error messages
+- Vault errors are sanitized before being returned to the AI — raw errors are logged to stderr only
+- Secret memory is zeroed immediately after use via `SecretValue.Clear()`
+- Vault tokens are automatically renewed at 75% of TTL and revoked on shutdown
+- The `SecretsProvider` interface supports future backends (AWS Secrets Manager, Azure Key Vault) without changing the MCP layer
+
+### Setting Up Vault AppRole
+
+```bash
+# Enable AppRole auth
+vault auth enable approle
+
+# Create a policy for the MCP server
+vault policy write portainer-mcp - <<EOF
+path "secret/data/*" {
+  capabilities = ["read", "list"]
+}
+EOF
+
+# Create an AppRole
+vault write auth/approle/role/portainer-mcp \
+    token_policies="portainer-mcp" \
+    token_ttl=1h \
+    token_max_ttl=4h
+
+# Get the role_id and secret_id
+vault read auth/approle/role/portainer-mcp/role-id
+vault write -f auth/approle/role/portainer-mcp/secret-id
+```
+
 # Portainer Version Support
 
 This tool is pinned to support a specific version of Portainer. The application will validate the Portainer server version at startup and fail if it doesn't match the required version.
@@ -261,6 +354,10 @@ The following table lists the currently (latest version) supported operations th
 | | StartLocalStack | Start a stopped local stack | 0.7.0 |
 | | StopLocalStack | Stop a running local stack | 0.7.0 |
 | | DeleteLocalStack | Delete a local stack permanently | 0.7.0 |
+| **Vault Secrets** | | *(Requires Vault configuration)* | |
+| | ListVaultSecrets | List secret key names at a Vault path (no values) | — |
+| | CreateLocalStackWithVaultSecrets | Create a stack with env vars sourced from Vault | — |
+| | UpdateLocalStackWithVaultSecrets | Update a stack with env vars sourced from Vault | — |
 
 # Development
 
