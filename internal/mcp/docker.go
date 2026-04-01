@@ -12,11 +12,6 @@ import (
 	"github.com/portainer/portainer-mcp/pkg/toolgen"
 )
 
-const (
-	// maxProxyResponseBytes caps proxy response reads to prevent unbounded memory consumption (10 MB)
-	maxProxyResponseBytes = 10 * 1024 * 1024
-)
-
 func (s *PortainerMCPServer) AddDockerProxyFeatures() {
 	// The Docker proxy tool is registered in both read-only and read-write modes
 	// because it supports GET requests which are useful in read-only mode.
