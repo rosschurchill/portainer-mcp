@@ -7,6 +7,7 @@ import (
 
 	"github.com/portainer/portainer-mcp/internal/mcp"
 	"github.com/portainer/portainer-mcp/internal/tooldef"
+	"github.com/portainer/portainer-mcp/pkg/secrets/vault"
 	"github.com/rs/zerolog/log"
 )
 
@@ -33,6 +34,13 @@ func main() {
 	disableVersionCheckFlag := flag.Bool("disable-version-check", false, "Disable Portainer server version check")
 	skipTLSFlag := flag.Bool("skip-tls-verify", false, "Skip TLS certificate verification when connecting to Portainer (not recommended for production)")
 
+	// Vault integration flags (all optional)
+	vaultAddrFlag := flag.String("vault-addr", "", "The HashiCorp Vault server address (e.g., https://vault.example.com:8200)")
+	vaultRoleIDFlag := flag.String("vault-role-id", "", "The Vault AppRole role_id for authentication")
+	vaultSecretIDFlag := flag.String("vault-secret-id", "", "The Vault AppRole secret_id for authentication")
+	vaultSkipTLSFlag := flag.Bool("vault-skip-tls", false, "Skip TLS verification for Vault connection")
+	vaultMountPathFlag := flag.String("vault-mount-path", "approle", "The Vault AppRole auth mount path")
+
 	flag.Parse()
 
 	if *serverFlag == "" {
@@ -52,6 +60,14 @@ func main() {
 	}
 	if token == "" {
 		log.Fatal().Msg("Token is required: use -token flag, -token-file flag, or PORTAINER_TOKEN environment variable")
+	}
+
+	// Validate vault flags: all-or-none
+	vaultFlagsSet := *vaultAddrFlag != "" || *vaultRoleIDFlag != "" || *vaultSecretIDFlag != ""
+	if vaultFlagsSet {
+		if *vaultAddrFlag == "" || *vaultRoleIDFlag == "" || *vaultSecretIDFlag == "" {
+			log.Fatal().Msg("All vault flags (-vault-addr, -vault-role-id, -vault-secret-id) are required when using Vault integration")
+		}
 	}
 
 	toolsPath := *toolsFlag
@@ -80,7 +96,31 @@ func main() {
 		Bool("skip-tls-verify", *skipTLSFlag).
 		Msg("starting MCP server")
 
-	server, err := mcp.NewPortainerMCPServer(*serverFlag, token, toolsPath, mcp.WithReadOnly(*readOnlyFlag), mcp.WithDisableVersionCheck(*disableVersionCheckFlag), mcp.WithSkipTLSVerify(*skipTLSFlag))
+	// Build server options
+	serverOpts := []mcp.ServerOption{
+		mcp.WithReadOnly(*readOnlyFlag),
+		mcp.WithDisableVersionCheck(*disableVersionCheckFlag),
+		mcp.WithSkipTLSVerify(*skipTLSFlag),
+	}
+
+	// Initialize Vault client if configured
+	if vaultFlagsSet {
+		vaultOpts := []vault.ClientOption{
+			vault.WithSkipTLSVerify(*vaultSkipTLSFlag),
+			vault.WithMountPath(*vaultMountPathFlag),
+		}
+
+		vaultClient, err := vault.NewVaultClient(*vaultAddrFlag, *vaultRoleIDFlag, *vaultSecretIDFlag, vaultOpts...)
+		if err != nil {
+			log.Fatal().Err(err).Msg("failed to connect to Vault")
+		}
+		defer vaultClient.Close()
+
+		serverOpts = append(serverOpts, mcp.WithSecretsProvider(vaultClient))
+		log.Info().Str("vault-addr", *vaultAddrFlag).Msg("vault integration enabled")
+	}
+
+	server, err := mcp.NewPortainerMCPServer(*serverFlag, token, toolsPath, serverOpts...)
 	if err != nil {
 		log.Fatal().Err(err).Msg("failed to create server")
 	}
@@ -96,6 +136,7 @@ func main() {
 	server.AddAccessGroupFeatures()
 	server.AddDockerProxyFeatures()
 	server.AddKubernetesProxyFeatures()
+	server.AddVaultFeatures()
 
 	err = server.Start()
 	if err != nil {

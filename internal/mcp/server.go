@@ -9,6 +9,7 @@ import (
 	"github.com/mark3labs/mcp-go/server"
 	"github.com/portainer/portainer-mcp/pkg/portainer/client"
 	"github.com/portainer/portainer-mcp/pkg/portainer/models"
+	"github.com/portainer/portainer-mcp/pkg/secrets"
 	"github.com/portainer/portainer-mcp/pkg/toolgen"
 )
 
@@ -92,6 +93,7 @@ type PortainerClient interface {
 type PortainerMCPServer struct {
 	srv      *server.MCPServer
 	cli      PortainerClient
+	secrets  secrets.SecretsProvider
 	tools    map[string]mcp.Tool
 	readOnly bool
 }
@@ -102,6 +104,7 @@ type ServerOption func(*serverOptions)
 // serverOptions contains all configurable options for the server
 type serverOptions struct {
 	client              PortainerClient
+	secretsProvider     secrets.SecretsProvider
 	readOnly            bool
 	disableVersionCheck bool
 	skipTLSVerify       bool
@@ -120,6 +123,14 @@ func WithClient(client PortainerClient) ServerOption {
 func WithReadOnly(readOnly bool) ServerOption {
 	return func(opts *serverOptions) {
 		opts.readOnly = readOnly
+	}
+}
+
+// WithSecretsProvider sets a secrets provider (e.g., Vault) for the server.
+// When set, vault-related tools are registered.
+func WithSecretsProvider(provider secrets.SecretsProvider) ServerOption {
+	return func(opts *serverOptions) {
+		opts.secretsProvider = provider
 	}
 }
 
@@ -199,6 +210,7 @@ func NewPortainerMCPServer(serverURL, token, toolsPath string, options ...Server
 			server.WithLogging(),
 		),
 		cli:      portainerClient,
+		secrets:  opts.secretsProvider,
 		tools:    tools,
 		readOnly: opts.readOnly,
 	}, nil
