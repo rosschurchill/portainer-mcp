@@ -12,6 +12,11 @@ import (
 	"github.com/portainer/portainer-mcp/pkg/toolgen"
 )
 
+const (
+	// maxProxyResponseBytes caps proxy response reads to prevent unbounded memory consumption (10 MB)
+	maxProxyResponseBytes = 10 * 1024 * 1024
+)
+
 func (s *PortainerMCPServer) AddDockerProxyFeatures() {
 	// The Docker proxy tool is registered in both read-only and read-write modes
 	// because it supports GET requests which are useful in read-only mode.
@@ -107,9 +112,6 @@ func (s *PortainerMCPServer) HandleDockerProxy() server.ToolHandlerFunc {
 		}
 
 		// Compact responses from endpoints known to return very verbose JSON.
-		// This strips fields that are rarely useful in an LLM context (network
-		// settings details, mount propagation, host config internals) to keep
-		// the response within a size that can be reasoned about.
 		compacted := compactDockerResponse(dockerAPIPath, responseBody)
 
 		return mcp.NewToolResultText(string(compacted)), nil
