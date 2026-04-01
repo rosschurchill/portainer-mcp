@@ -278,18 +278,22 @@ func (c *VaultClient) GetSecrets(path string) (*secrets.SecretResult, error) {
 
 // ListSecrets returns the list of key names at the given Vault path.
 // No secret values are returned.
+//
+// For directory paths (e.g., "secret/chimera"), it returns sub-paths.
+// For leaf paths (e.g., "secret/telegram"), it returns data key names.
 func (c *VaultClient) ListSecrets(path string) ([]string, error) {
-	path = normalizeKVPath(path)
-
 	c.mu.RLock()
 	token := c.token
 	c.mu.RUnlock()
 
-	// For KV v2, metadata listing uses the metadata prefix
-	metadataPath := strings.Replace(path, "/data/", "/metadata/", 1)
+	// Build the metadata path for LIST operations.
+	// "secret/chimera" -> "secret/metadata/chimera"
+	// "secret" -> "secret/metadata"
+	metadataPath := normalizeMetadataPath(path)
 
+	// Vault requires the LIST HTTP method (not GET) for directory listing
 	url := fmt.Sprintf("%s/v1/%s", c.address, metadataPath)
-	req, err := http.NewRequestWithContext(c.ctx, http.MethodGet, url, nil)
+	req, err := http.NewRequestWithContext(c.ctx, "LIST", url, nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
@@ -303,7 +307,7 @@ func (c *VaultClient) ListSecrets(path string) ([]string, error) {
 
 	if resp.StatusCode == http.StatusNotFound {
 		// Path has no sub-keys; try reading the secret to list its data keys
-		return c.listDataKeys(path, token)
+		return c.listDataKeys(normalizeKVPath(path), token)
 	}
 
 	body, err := io.ReadAll(resp.Body)
@@ -313,12 +317,12 @@ func (c *VaultClient) ListSecrets(path string) ([]string, error) {
 
 	if resp.StatusCode != http.StatusOK {
 		// Fall back to listing data keys from the secret itself
-		return c.listDataKeys(path, token)
+		return c.listDataKeys(normalizeKVPath(path), token)
 	}
 
 	var listResp listResponse
 	if err := json.Unmarshal(body, &listResp); err != nil {
-		return c.listDataKeys(path, token)
+		return c.listDataKeys(normalizeKVPath(path), token)
 	}
 
 	if len(listResp.Data.Keys) > 0 {
@@ -423,4 +427,29 @@ func normalizeKVPath(path string) string {
 	}
 
 	return engine + "/data/" + rest
+}
+
+// normalizeMetadataPath converts a user-friendly path to the Vault KV v2 metadata path.
+// "secret" -> "secret/metadata"
+// "secret/chimera" -> "secret/metadata/chimera"
+// "secret/metadata/chimera" -> "secret/metadata/chimera" (unchanged)
+func normalizeMetadataPath(path string) string {
+	parts := strings.SplitN(path, "/", 2)
+	engine := parts[0]
+
+	if len(parts) < 2 {
+		return engine + "/metadata"
+	}
+
+	rest := parts[1]
+
+	// Already a metadata path
+	if strings.HasPrefix(rest, "metadata/") || rest == "metadata" {
+		return path
+	}
+
+	// Strip data/ prefix if present
+	rest = strings.TrimPrefix(rest, "data/")
+
+	return engine + "/metadata/" + rest
 }
