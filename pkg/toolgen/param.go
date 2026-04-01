@@ -2,6 +2,7 @@ package toolgen
 
 import (
 	"fmt"
+	"strconv"
 
 	"github.com/mark3labs/mcp-go/mcp"
 )
@@ -46,12 +47,18 @@ func (p *ParameterParser) GetNumber(name string, required bool) (float64, error)
 		return 0, nil
 	}
 
-	numValue, ok := value.(float64)
-	if !ok {
-		return 0, fmt.Errorf("%s must be a number", name)
+	switch v := value.(type) {
+	case float64:
+		return v, nil
+	case string:
+		numValue, err := strconv.ParseFloat(v, 64)
+		if err != nil {
+			return 0, fmt.Errorf("invalid %s parameter: %s must be a number", name, name)
+		}
+		return numValue, nil
+	default:
+		return 0, fmt.Errorf("invalid %s parameter: %s must be a number", name, name)
 	}
-
-	return numValue, nil
 }
 
 // GetInt extracts an integer parameter from the request
@@ -128,11 +135,18 @@ func parseArrayOfIntegers(array []any) ([]int, error) {
 	result := make([]int, 0, len(array))
 
 	for _, item := range array {
-		idFloat, ok := item.(float64)
-		if !ok {
+		switch v := item.(type) {
+		case float64:
+			result = append(result, int(v))
+		case string:
+			numValue, err := strconv.ParseFloat(v, 64)
+			if err != nil {
+				return nil, fmt.Errorf("failed to parse '%v' as integer", item)
+			}
+			result = append(result, int(numValue))
+		default:
 			return nil, fmt.Errorf("failed to parse '%v' as integer", item)
 		}
-		result = append(result, int(idFloat))
 	}
 
 	return result, nil

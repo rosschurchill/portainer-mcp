@@ -1,9 +1,9 @@
 package client
 
 import (
+	"fmt"
 	"net/http"
 
-	"github.com/portainer/client-api-go/v2/client"
 	"github.com/portainer/portainer-mcp/pkg/portainer/models"
 )
 
@@ -16,19 +16,6 @@ import (
 //   - *http.Response: The response from the Docker API
 //   - error: Any error that occurred during the request
 func (c *PortainerClient) ProxyDockerRequest(opts models.DockerProxyRequestOptions) (*http.Response, error) {
-	proxyOpts := client.ProxyRequestOptions{
-		Method:  opts.Method,
-		APIPath: opts.Path,
-		Body:    opts.Body,
-	}
-
-	if len(opts.QueryParams) > 0 {
-		proxyOpts.QueryParams = opts.QueryParams
-	}
-
-	if len(opts.Headers) > 0 {
-		proxyOpts.Headers = opts.Headers
-	}
-
-	return c.cli.ProxyDockerRequest(opts.EnvironmentID, proxyOpts)
+	path := fmt.Sprintf("/api/endpoints/%d/docker%s", opts.EnvironmentID, opts.Path)
+	return c.rawCli.proxyRequest(opts.Method, path, opts.QueryParams, opts.Headers, opts.Body)
 }

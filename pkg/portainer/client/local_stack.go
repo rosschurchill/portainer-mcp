@@ -10,6 +10,31 @@ import (
 	"github.com/portainer/portainer-mcp/pkg/portainer/models"
 )
 
+// proxyRequest performs a raw HTTP proxy request, passing through the body and headers as-is.
+func (c *rawHTTPClient) proxyRequest(method, path string, queryParams map[string]string, headers map[string]string, body io.Reader) (*http.Response, error) {
+	url := c.serverURL + path
+
+	req, err := http.NewRequest(method, url, body)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create request: %w", err)
+	}
+
+	req.Header.Set("X-API-Key", c.token)
+	for k, v := range headers {
+		req.Header.Set(k, v)
+	}
+
+	if len(queryParams) > 0 {
+		q := req.URL.Query()
+		for k, v := range queryParams {
+			q.Set(k, v)
+		}
+		req.URL.RawQuery = q.Encode()
+	}
+
+	return c.httpCli.Do(req)
+}
+
 // apiRequest performs a raw HTTP request against the Portainer API.
 func (c *rawHTTPClient) apiRequest(method, path string, body interface{}) (*http.Response, error) {
 	url := c.serverURL + path
