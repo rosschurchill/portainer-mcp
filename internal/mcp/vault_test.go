@@ -299,6 +299,32 @@ func TestParseVaultSecretMappings(t *testing.T) {
 			},
 			wantErr: true,
 		},
+		{
+			name: "snake_case parameter name accepted",
+			args: map[string]any{
+				"vault_secrets": []any{
+					map[string]any{
+						"vault_path": "secret/data/myapp",
+						"vault_key":  "db_password",
+						"env_name":   "DB_PASSWORD",
+					},
+				},
+			},
+			wantLen: 1,
+		},
+		{
+			name: "snake_case field names with camelCase param accepted",
+			args: map[string]any{
+				"vaultSecrets": []any{
+					map[string]any{
+						"vault_path": "secret/data/myapp",
+						"vault_key":  "api_key",
+						"name":       "API_KEY",
+					},
+				},
+			},
+			wantLen: 1,
+		},
 	}
 
 	for _, tt := range tests {

@@ -224,10 +224,19 @@ func (s *PortainerMCPServer) resolveVaultSecrets(mappings []vaultSecretMapping) 
 }
 
 // parseVaultSecretMappings extracts vault secret mappings from the request.
+// Accepts both camelCase (vaultSecrets) and snake_case (vault_secrets) parameter
+// names, since LLMs frequently use snake_case despite the schema specifying camelCase.
 func parseVaultSecretMappings(parser *toolgen.ParameterParser) ([]vaultSecretMapping, error) {
-	rawMappings, err := parser.GetArrayOfObjects("vaultSecrets", true)
+	rawMappings, err := parser.GetArrayOfObjects("vaultSecrets", false)
 	if err != nil {
 		return nil, err
+	}
+	if len(rawMappings) == 0 {
+		// Try snake_case fallback
+		rawMappings, err = parser.GetArrayOfObjects("vault_secrets", true)
+		if err != nil {
+			return nil, fmt.Errorf("vaultSecrets is required")
+		}
 	}
 
 	mappings := make([]vaultSecretMapping, 0, len(rawMappings))
@@ -237,9 +246,9 @@ func parseVaultSecretMappings(parser *toolgen.ParameterParser) ([]vaultSecretMap
 			return nil, fmt.Errorf("invalid vaultSecrets entry: expected object")
 		}
 
-		vaultPath, _ := obj["vaultPath"].(string)
-		vaultKey, _ := obj["vaultKey"].(string)
-		envName, _ := obj["envName"].(string)
+		vaultPath := stringFromMap(obj, "vaultPath", "vault_path")
+		vaultKey := stringFromMap(obj, "vaultKey", "vault_key")
+		envName := stringFromMap(obj, "envName", "env_name", "name")
 
 		if vaultPath == "" || vaultKey == "" || envName == "" {
 			return nil, fmt.Errorf("vaultSecrets entries require 'vaultPath', 'vaultKey', and 'envName' fields")
@@ -253,6 +262,16 @@ func parseVaultSecretMappings(parser *toolgen.ParameterParser) ([]vaultSecretMap
 	}
 
 	return mappings, nil
+}
+
+// stringFromMap tries multiple keys in order and returns the first non-empty string value.
+func stringFromMap(obj map[string]interface{}, keys ...string) string {
+	for _, key := range keys {
+		if v, ok := obj[key].(string); ok && v != "" {
+			return v
+		}
+	}
+	return ""
 }
 
 // sanitizeVaultError returns a safe error message for MCP responses.
