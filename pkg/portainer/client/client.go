@@ -95,7 +95,7 @@ func NewPortainerClient(serverURL string, token string, opts ...ClientOption) *P
 	}
 
 	httpCli := &http.Client{
-		Timeout: 30 * time.Second,
+		Timeout: 5 * time.Minute,
 	}
 	if options.skipTLSVerify {
 		httpCli.Transport = &http.Transport{
